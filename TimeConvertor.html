@@ -66,10 +66,6 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
 .grid-outer::-webkit-scrollbar-track { background:var(--border); border-radius:3px; }
 .grid-outer::-webkit-scrollbar-thumb { background:#c4c9d6; border-radius:3px; }
 
-/* 
-  Key layout: a single CSS grid where columns = cities (+ optional add col),
-  rows = 1 header + 24 hour rows. This guarantees perfect alignment always.
-*/
 .time-grid {
   display: inline-grid;
   grid-template-rows: auto repeat(24, 34px);
@@ -78,13 +74,9 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
   min-width: max-content;
 }
 
-/* Each col-wrap spans all rows via subgrid trick — we instead place cells individually */
-/* Header cells sit in row 1, tile cells in rows 2-25 */
-
 .col-header-cell {
   width: 160px;
   min-width: 160px;
-  /* row 1 handled by grid placement */
 }
 
 .col-header {
@@ -95,7 +87,6 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
   position: relative;
   cursor: grab;
   user-select: none;
-  /* Fixed height so all headers are identical */
   height: 100%;
 }
 .col-header:active { cursor: grabbing; }
@@ -119,12 +110,12 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
 .col-header-cell:hover .col-remove { opacity:1; }
 .col-remove:hover { background:#fee2e2; color:#ef4444; }
 
-/* TILES — fixed 34px height via grid row */
+/* TILES */
 .hour-tile {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 14px;
   cursor: pointer; user-select: none;
-  height: 34px; /* matches grid-template-rows */
+  height: 34px;
   border-left: 1px solid rgba(0,0,0,.04);
   border-right: 1px solid rgba(0,0,0,.04);
   position: relative;
@@ -172,7 +163,6 @@ body.dark .tile-night     { background:#1e1535; color:#a78bfa; }
 .add-col-icon { width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(99,102,241,.12)); display:flex; align-items:center; justify-content:center; font-size:22px; color:#10b981; transition:transform .2s; }
 .add-col-inner:hover .add-col-icon { transform:scale(1.1); }
 .add-col-text { font-size:12px; font-weight:600; color:var(--text-secondary); }
-/* Add col tile placeholders — invisible, just hold the row height */
 .add-tile-placeholder { height:34px; }
 
 /* DRAG INDICATORS */
@@ -180,6 +170,10 @@ body.dark .tile-night     { background:#1e1535; color:#a78bfa; }
 .col-header-cell.drag-over-right { box-shadow:  3px 0 0 0 #10b981; }
 .col-header-cell.dragging .col-header { opacity: .3; }
 .col-header-cell.dragging .hour-tile  { opacity: .3; }
+
+/* HOME DROP INDICATOR — glows red/pink when dragging over leftmost slot */
+.col-header-cell.will-be-home { box-shadow: -4px 0 0 0 #f43f5e, 0 0 0 2px rgba(244,63,94,.25); }
+.col-header-cell.will-be-home .col-header { outline: 2px dashed rgba(244,63,94,.5); border-radius: 16px 16px 0 0; }
 
 /* MODAL */
 .modal-overlay { position:fixed; inset:0; background:rgba(15,22,35,.55); backdrop-filter:blur(6px); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity .2s; }
@@ -206,6 +200,10 @@ body.dark .tile-night     { background:#1e1535; color:#a78bfa; }
 .drag-ghost { position:fixed; top:-9999px; left:-9999px; width:160px; background:var(--surface); border-radius:14px; padding:14px; box-shadow:0 16px 40px rgba(0,0,0,.25); border:2px solid #10b981; pointer-events:none; z-index:9999; font-family:var(--font); opacity:0; }
 .drag-ghost .g-name { font-size:15px; font-weight:800; color:var(--text-primary); }
 .drag-ghost .g-time { font-family:var(--mono); font-size:18px; font-weight:700; color:#10b981; margin-top:4px; }
+.drag-ghost.will-be-home { border-color:#f43f5e; }
+.drag-ghost.will-be-home .g-time { color:#f43f5e; }
+.drag-ghost .g-hint { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#10b981; margin-top:6px; opacity:0; transition:opacity .15s; }
+.drag-ghost.will-be-home .g-hint { color:#f43f5e; opacity:1; }
 
 /* TOAST */
 #saveToast { position:fixed; top:20px; right:20px; z-index:200; background:#0f1623; color:white; padding:10px 18px; border-radius:100px; font-size:12px; font-weight:600; font-family:var(--mono); display:flex; align-items:center; gap:7px; box-shadow:0 8px 24px rgba(0,0,0,.25); opacity:0; transform:translateY(-8px); transition:opacity .25s,transform .25s; pointer-events:none; }
@@ -268,7 +266,11 @@ body.dark .tile-night     { background:#1e1535; color:#a78bfa; }
 
 <div class="tooltip-bar" id="tooltipBar"></div>
 <div id="saveToast"><span style="color:#10b981;font-size:14px;">✓</span> Saved</div>
-<div class="drag-ghost" id="dragGhost"><div class="g-name" id="ghostName"></div><div class="g-time" id="ghostTime"></div></div>
+<div class="drag-ghost" id="dragGhost">
+  <div class="g-name" id="ghostName"></div>
+  <div class="g-time" id="ghostTime"></div>
+  <div class="g-hint" id="ghostHint">🏠 Set as Home</div>
+</div>
 
 <script>
 const CITIES_DB = [
@@ -439,7 +441,7 @@ function buildDayBoundaryMap() {
   return map;
 }
 
-// ── BUILD GRID (CSS Grid approach — one element per cell) ──
+// ── BUILD GRID ──
 function buildGrid() {
   const grid = document.getElementById('timeGrid');
   grid.innerHTML = '';
@@ -448,9 +450,7 @@ function buildGrid() {
   const showAdd = n < 6;
   const totalCols = n + (showAdd ? 1 : 0);
 
-  // Set CSS grid columns
   grid.style.gridTemplateColumns = `repeat(${totalCols}, 160px)`;
-  // rows: 1 header row (auto) + 24 tile rows (34px each)
   grid.style.gridTemplateRows = `auto repeat(24, 34px)`;
 
   const overlapHours  = features.overlap ? computeOverlapHours() : new Set();
@@ -466,7 +466,6 @@ function buildGrid() {
     const cell = document.createElement('div');
     cell.className = 'col-header-cell' + (isHome ? ' home-col' : '');
     cell.dataset.idx = idx;
-    // place in grid row 1
     cell.style.gridRow = '1';
 
     const hdr = document.createElement('div');
@@ -526,7 +525,6 @@ function buildGrid() {
       ].filter(Boolean).join(' ');
 
       tile.dataset.homeHour = h;
-      // grid placement: row = h+2 (1-indexed, offset by header), col = idx+1
       tile.style.gridRow    = `${h + 2}`;
       tile.style.gridColumn = `${idx + 1}`;
 
@@ -541,7 +539,6 @@ function buildGrid() {
       grid.appendChild(tile);
     });
 
-    // Add col placeholder
     if (showAdd) {
       const ph = document.createElement('div');
       ph.className = 'add-tile-placeholder';
@@ -551,14 +548,13 @@ function buildGrid() {
     }
   }
 
-  // Scroll now-tile into view
   if (nowHour >= 0) {
     const nt = grid.querySelector('.now-tile');
     if (nt) setTimeout(() => nt.scrollIntoView({block:'center',behavior:'smooth'}), 80);
   }
 }
 
-// ── DRAG (operates on col-header-cells) ──
+// ── DRAG ──
 let dragIdx=null, overIdx=null, ghostEl, ghostOffX, ghostOffY;
 
 function onHeaderMouseDown(e, cell) {
@@ -575,9 +571,8 @@ function onHeaderMouseDown(e, cell) {
   ghostEl.style.left = (e.clientX - ghostOffX) + 'px';
   ghostEl.style.top  = (e.clientY - ghostOffY) + 'px';
   ghostEl.style.opacity = '1';
+  ghostEl.classList.remove('will-be-home');
   cell.classList.add('dragging');
-  // Also dim the tiles of this column
-  document.querySelectorAll(`.hour-tile[style*="grid-column: ${dragIdx+1}"]`).forEach(t => t.style.opacity='.3');
   document.addEventListener('mousemove', onDragMove);
   document.addEventListener('mouseup',   onDragEnd);
 }
@@ -586,28 +581,50 @@ function onDragMove(e) {
   if (dragIdx === null) return;
   ghostEl.style.left = (e.clientX - ghostOffX) + 'px';
   ghostEl.style.top  = (e.clientY - ghostOffY) + 'px';
+
   const cells = document.querySelectorAll('.col-header-cell');
   let found = null;
+  let foundSide = null;
   cells.forEach(c => {
-    c.classList.remove('drag-over-left','drag-over-right');
+    c.classList.remove('drag-over-left','drag-over-right','will-be-home');
     const r = c.getBoundingClientRect();
-    if (e.clientX >= r.left && e.clientX <= r.right) found = parseInt(c.dataset.idx, 10);
+    if (e.clientX >= r.left && e.clientX <= r.right) {
+      found = parseInt(c.dataset.idx, 10);
+      foundSide = e.clientX < r.left + r.width/2 ? 'left' : 'right';
+    }
   });
+
   if (found !== null && found !== dragIdx) {
     overIdx = found;
     const oc = document.querySelector(`.col-header-cell[data-idx="${overIdx}"]`);
     if (oc) {
       const r = oc.getBoundingClientRect();
-      oc.classList.add(e.clientX < r.left + r.width/2 ? 'drag-over-left' : 'drag-over-right');
+      const side = e.clientX < r.left + r.width/2 ? 'left' : 'right';
+      // Determine the insertion index to know if it'll land at position 0
+      let ins = overIdx + (side === 'right' ? 1 : 0);
+      let t = ins > dragIdx ? ins - 1 : ins;
+      t = Math.max(0, Math.min(t, activeCities.length - 1));
+      const willBeHome = t === 0 && dragIdx !== 0;
+      oc.classList.add(side === 'left' ? 'drag-over-left' : 'drag-over-right');
+      if (willBeHome) {
+        oc.classList.add('will-be-home');
+        ghostEl.classList.add('will-be-home');
+      } else {
+        ghostEl.classList.remove('will-be-home');
+      }
     }
-  } else { overIdx = null; }
+  } else {
+    overIdx = null;
+    ghostEl.classList.remove('will-be-home');
+  }
 }
 
 function onDragEnd(e) {
   document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup',   onDragEnd);
   ghostEl.style.opacity = '0'; ghostEl.style.top = '-9999px';
-  document.querySelectorAll('.col-header-cell').forEach(c => c.classList.remove('dragging','drag-over-left','drag-over-right'));
+  ghostEl.classList.remove('will-be-home');
+  document.querySelectorAll('.col-header-cell').forEach(c => c.classList.remove('dragging','drag-over-left','drag-over-right','will-be-home'));
 
   if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
     const oc = document.querySelector(`.col-header-cell[data-idx="${overIdx}"]`);
@@ -619,10 +636,16 @@ function onDragEnd(e) {
     let t = ins > dragIdx ? ins-1 : ins;
     t = Math.max(0, Math.min(t, activeCities.length));
     activeCities.splice(t, 0, item);
-    if (wasHome) homeIdx = t; else if (homeIdx >= t) homeIdx++;
+    // If dropped at position 0, it becomes the new home
+    if (t === 0) {
+      homeIdx = 0;
+    } else if (wasHome) {
+      homeIdx = t;
+    } else if (homeIdx >= t) {
+      homeIdx++;
+    }
     saveCities(); renderAll();
   } else {
-    // Reset opacity if no drop happened
     buildGrid();
   }
   dragIdx = null; overIdx = null;
