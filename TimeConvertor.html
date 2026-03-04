@@ -599,17 +599,16 @@ function onDragMove(e) {
     const oc = document.querySelector(`.col-header-cell[data-idx="${overIdx}"]`);
     if (oc) {
       const r = oc.getBoundingClientRect();
-      const side = e.clientX < r.left + r.width/2 ? 'left' : 'right';
-      // Determine the insertion index to know if it'll land at position 0
-      let ins = overIdx + (side === 'right' ? 1 : 0);
-      let t = ins > dragIdx ? ins - 1 : ins;
-      t = Math.max(0, Math.min(t, activeCities.length - 1));
-      const willBeHome = t === 0 && dragIdx !== 0;
-      oc.classList.add(side === 'left' ? 'drag-over-left' : 'drag-over-right');
-      if (willBeHome) {
+      // Whole leftmost column is the "set as home" zone — ignore left/right half
+      if (overIdx === 0) {
         oc.classList.add('will-be-home');
         ghostEl.classList.add('will-be-home');
       } else {
+        const side = e.clientX < r.left + r.width/2 ? 'left' : 'right';
+        let ins = overIdx + (side === 'right' ? 1 : 0);
+        let t = ins > dragIdx ? ins - 1 : ins;
+        t = Math.max(0, Math.min(t, activeCities.length - 1));
+        oc.classList.add(side === 'left' ? 'drag-over-left' : 'drag-over-right');
         ghostEl.classList.remove('will-be-home');
       }
     }
@@ -629,7 +628,8 @@ function onDragEnd(e) {
   if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
     const oc = document.querySelector(`.col-header-cell[data-idx="${overIdx}"]`);
     let ins = overIdx;
-    if (oc) { const r = oc.getBoundingClientRect(); if (e.clientX >= r.left + r.width/2) ins = overIdx+1; }
+    // Whole leftmost column = position 0 drop zone; skip half-check
+    if (oc && overIdx !== 0) { const r = oc.getBoundingClientRect(); if (e.clientX >= r.left + r.width/2) ins = overIdx+1; }
     const item = activeCities.splice(dragIdx, 1)[0];
     const wasHome = dragIdx === homeIdx;
     if (!wasHome && homeIdx > dragIdx) homeIdx--;
