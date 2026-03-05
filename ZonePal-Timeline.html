@@ -164,8 +164,8 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
   transition:filter .08s;
 }
 .h-cell:hover { filter:brightness(.89) saturate(1.2); }
-.c-hr { font-size:15px; font-weight:800; line-height:1; }
-.c-ap { font-size:8px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; opacity:.7; }
+.c-hr { font-size:14px; font-weight:800; line-height:1; }
+.c-ap { font-size:9px; font-weight:800; letter-spacing:.4px; text-transform:uppercase; opacity:.9; }
 
 /* Color classes */
 .tile-sleep     { background:#dde1ea; color:#7a8298; }
@@ -427,7 +427,7 @@ function fmtCellTime(utcMs, tz) {
   const parts = new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit',hour12:true}).formatToParts(new Date(utcMs));
   const hr = parts.find(p=>p.type==='hour')?.value||'0';
   const mn = parts.find(p=>p.type==='minute')?.value||'00';
-  const ap = (parts.find(p=>p.type==='dayperiod')?.value||'')[0]?.toLowerCase()||'';
+  const ap = (parts.find(p=>p.type==='dayperiod')?.value||'').toUpperCase()||'';
   return { hr, mn, ap, hasMin: mn!=='00' };
 }
 function computeOverlapHours() {
@@ -467,7 +467,10 @@ function buildGrid() {
     const hdr = mk('div', cls);
     hdr.dataset.h = h;
     if (isOvlp) { const dot=mk('span','overlap-dot'); hdr.appendChild(dot); }
-    const lbl = mk('span','hdr-label'); lbl.textContent=fmtHourShort(h); hdr.appendChild(lbl);
+    const lbl = mk('span','hdr-label');
+    const hourNum = h===0||h===12 ? 12 : h%12;
+    lbl.innerHTML = `<span style="display:block;line-height:1">${hourNum}</span><span style="display:block;font-size:8px;font-weight:800;letter-spacing:.3px;opacity:.8">${h<12?'AM':'PM'}</span>`;
+    hdr.appendChild(lbl);
     hdr.addEventListener('mousedown', e=>{ e.preventDefault(); dragActive=true; selectHour(h); });
     hdr.addEventListener('mouseenter', ()=>{ if(dragActive) selectHour(h); });
     grid.appendChild(hdr);
