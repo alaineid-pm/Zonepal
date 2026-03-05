@@ -418,20 +418,47 @@
       .hero-title { font-size: 20px; }
     }
 
+    /* ── PRINT SUMMARY (screen: hidden, print: visible) ── */
+    .print-summary { display: none; }
+
     /* ── PRINT ── */
     @media print {
-      body { background: white !important; }
+      body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       body::before { display: none; }
       header, .hero-formula, .action-row, .chart-card, #toast,
-      .icon-btn, .pill-badge, .chart-toggle-row { display: none !important; }
+      .icon-btn, .pill-badge, .chart-toggle-row,
+      .two-col, .contrib-toggle-wrap { display: none !important; }
       .app { padding: 0; max-width: 100%; }
-      .hero { border: none; padding: 12px 0; margin-bottom: 12px; }
-      .two-col { page-break-inside: avoid; }
+      .hero { border: none; padding: 12px 0 8px; margin-bottom: 10px; }
       .stat-card, .comp-card, .table-card { page-break-inside: avoid; }
       .table-scroll { max-height: none; overflow: visible; }
       .stats-row { grid-template-columns: repeat(3, 1fr); }
-      input, select, button { display: none !important; }
       .card, .stat-card, .comp-card { border: 1px solid #ccc; }
+
+      /* Show the print summary */
+      .print-summary {
+        display: block;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-bottom: 14px;
+        background: #fafafa;
+      }
+      .print-summary-title {
+        font-size: 10px; font-weight: 700; letter-spacing: .5px;
+        text-transform: uppercase; color: #888; margin-bottom: 10px;
+      }
+      .print-summary-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 16px;
+      }
+      .print-summary-item .ps-label {
+        font-size: 10px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: .4px; color: #999; margin-bottom: 2px;
+      }
+      .print-summary-item .ps-value {
+        font-size: 14px; font-weight: 700; color: #0f1623;
+        font-family: 'JetBrains Mono', monospace;
+      }
     }
   </style>
 </head>
@@ -465,6 +492,12 @@
     <div class="hero-formula">
       A = <span class="hl">P</span>(1 + <span class="hlp">r</span>/<span class="hlp">n</span>)<sup><span class="hlp">nt</span></sup> + <span class="hl">PMT</span> · …
     </div>
+  </div>
+
+  <!-- PRINT SUMMARY (hidden on screen, shown when printing) -->
+  <div class="print-summary" id="print-summary">
+    <div class="print-summary-title">Calculator Settings</div>
+    <div class="print-summary-grid" id="print-summary-grid"></div>
   </div>
 
   <!-- INPUTS -->
@@ -846,6 +879,7 @@
       </tr>
     `).join('');
 
+    updatePrintSummary();
     drawChart(rows);
   }
 
@@ -960,6 +994,39 @@
     const last = rows[nRows - 1];
     if (showInvested) drawDot(last.invested, '#10b981');
     if (showBalance)  drawDot(last.balance,  '#6366f1');
+  }
+
+  // ── Print Summary ──────────────────────────────────────────────────────────
+  function updatePrintSummary() {
+    const P           = parseFloat(document.getElementById('principal').value) || 0;
+    const rate        = parseFloat(document.getElementById('rate').value);
+    const yrs         = parseInt(document.getElementById('years').value);
+    const freqEl      = document.getElementById('freq');
+    const freqLabel   = freqEl.options[freqEl.selectedIndex].text;
+
+    const items = [
+      { label: 'Initial Principal',    value: '$' + P.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) },
+      { label: 'Annual Interest Rate', value: rate.toFixed(1) + '%' },
+      { label: 'Investment Period',    value: yrs + ' years' },
+      { label: 'Compounding',          value: freqLabel },
+    ];
+
+    if (contribMode === 'deposits' || contribMode === 'both') {
+      const dAmt   = parseFloat(document.getElementById('deposit-amount').value) || 0;
+      const dFreq  = document.getElementById('deposit-freq').value;
+      const dInc   = parseFloat(document.getElementById('deposit-increase').value) || 0;
+      items.push({ label: 'Deposit Amount',  value: '$' + dAmt.toLocaleString('en-US', {minimumFractionDigits:2}) + ' / ' + dFreq });
+      if (dInc > 0) items.push({ label: 'Annual Dep. Increase', value: dInc.toFixed(1) + '%' });
+    }
+    if (contribMode === 'withdrawals' || contribMode === 'both') {
+      const wAmt  = parseFloat(document.getElementById('withdrawal-amount').value) || 0;
+      const wFreq = document.getElementById('withdrawal-freq').value;
+      items.push({ label: 'Withdrawal Amount', value: '$' + wAmt.toLocaleString('en-US', {minimumFractionDigits:2}) + ' / ' + wFreq });
+    }
+
+    document.getElementById('print-summary-grid').innerHTML = items.map(it =>
+      `<div class="print-summary-item"><div class="ps-label">${it.label}</div><div class="ps-value">${it.value}</div></div>`
+    ).join('');
   }
 
   // ── Export CSV ─────────────────────────────────────────────────────────────
