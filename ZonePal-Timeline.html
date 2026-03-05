@@ -127,6 +127,30 @@ header { padding:24px 0 20px; display:flex; align-items:center; justify-content:
 .city-label:hover .cl-remove { opacity:1; }
 .cl-remove:hover { background:#fee2e2; color:#ef4444; }
 
+/* ROW DRAG HANDLE */
+.drag-handle { display:flex; flex-direction:column; gap:3px; padding:4px 4px; opacity:0; transition:opacity .15s; cursor:grab; flex-shrink:0; align-self:center; border-radius:4px; }
+.city-label:hover .drag-handle { opacity:.45; }
+.drag-handle:hover { opacity:1 !important; background:rgba(0,0,0,.06); }
+.drag-handle:active { cursor:grabbing; }
+.drag-handle span { display:block; width:13px; height:2px; border-radius:1px; background:currentColor; }
+.home-row .drag-handle span { background:rgba(255,255,255,.5); }
+
+/* ROW GHOST */
+#rowGhost { position:fixed; top:-9999px; left:20px; width:185px; background:var(--surface); border-radius:14px; padding:14px 16px; box-shadow:0 16px 40px rgba(0,0,0,.28); border:2px solid #10b981; pointer-events:none; z-index:9999; font-family:var(--font); opacity:0; transition:border-color .15s; }
+#rowGhost.will-be-home { border-color:#f43f5e; }
+.rg-name { font-size:14px; font-weight:800; color:var(--text-primary); }
+.rg-time { font-family:var(--mono); font-size:17px; font-weight:700; color:#10b981; margin-top:4px; }
+#rowGhost.will-be-home .rg-time { color:#f43f5e; }
+.rg-hint { font-size:9px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#f43f5e; margin-top:6px; opacity:0; transition:opacity .15s; }
+#rowGhost.will-be-home .rg-hint { opacity:1; }
+
+/* DROP LINE */
+#dropLine { position:fixed; height:3px; background:#10b981; border-radius:2px; pointer-events:none; z-index:9998; opacity:0; box-shadow:0 0 8px rgba(16,185,129,.5); transition:top .04s; }
+#dropLine.will-be-home { background:#f43f5e; box-shadow:0 0 8px rgba(244,63,94,.5); }
+
+/* DRAGGING ROW */
+.row-dragging { opacity:.25 !important; pointer-events:none; }
+
 /* HOUR CELLS */
 .h-cell {
   height:68px;
@@ -286,6 +310,12 @@ body.dark .tile-night     { background:#1e1535; color:#a78bfa; }
 </div>
 
 <div id="saveToast"><span style="color:#10b981;font-size:14px;">✓</span> Saved</div>
+<div id="rowGhost">
+  <div class="rg-name" id="rgName"></div>
+  <div class="rg-time" id="rgTime"></div>
+  <div class="rg-hint">🏠 Set as Home</div>
+</div>
+<div id="dropLine"></div>
 
 <script>
 const CITIES_DB = [
@@ -450,11 +480,17 @@ function buildGrid() {
 
     // Label cell
     const label = mk('div','city-label'+(isHome?' home-row':''));
+    label.dataset.ci = ci;
+    // Drag handle
+    const handle = mk('div','drag-handle'); handle.title='Drag to reorder';
+    for(let i=0;i<3;i++) handle.appendChild(mk('span'));
+    handle.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); onRowDragStart(e,ci); });
     const accentBar = mk('div','cl-accent');
     accentBar.style.background = accent;
     const info = mk('div','cl-info');
     if (isHome) info.innerHTML += `<div class="cl-badge">🏠 Home</div>`;
     info.innerHTML += `<div class="cl-name">${city.name}</div><div class="cl-country">${city.country}</div><div class="cl-live" id="cl-${ci}"></div><div class="cl-offset">${getUTCOffset(city.tz)}</div>`;
+    label.appendChild(handle);
     label.appendChild(accentBar);
     label.appendChild(info);
     if (!isHome) {
@@ -639,6 +675,88 @@ function loadCities() {
     const r=JSON.parse(raw).map(s=>CITIES_DB.find(c=>c.name===s.name&&c.tz===s.tz)).filter(Boolean);
     return r.length?r:null;
   }catch(e){return null;}
+}
+
+// ── ROW DRAG (reorder cities) ──
+let rowDragIdx=null, rowOverIdx=null;
+
+function onRowDragStart(e, ci) {
+  rowDragIdx = ci;
+  const ghost = document.getElementById('rowGhost');
+  document.getElementById('rgName').textContent = activeCities[ci].name;
+  document.getElementById('rgTime').textContent = formatCurrentTime(activeCities[ci].tz);
+  ghost.style.top = (e.clientY - 20) + 'px';
+  ghost.style.opacity = '1';
+  ghost.classList.remove('will-be-home');
+  document.querySelectorAll(`#tlGrid [data-ci="${ci}"]`).forEach(el=>el.classList.add('row-dragging'));
+  document.addEventListener('mousemove', onRowDragMove);
+  document.addEventListener('mouseup', onRowDragEnd);
+}
+
+function onRowDragMove(e) {
+  if (rowDragIdx===null) return;
+  const ghost = document.getElementById('rowGhost');
+  ghost.style.top = (e.clientY - 20) + 'px';
+
+  const labels = [...document.querySelectorAll('#tlGrid .city-label')];
+  let targetCi=null, insertBefore=true;
+  labels.forEach(lbl=>{
+    const r = lbl.getBoundingClientRect();
+    if (e.clientY >= r.top && e.clientY < r.bottom) {
+      targetCi = parseInt(lbl.dataset.ci, 10);
+      // Entire first row = "set as home" zone (no need to hit exact top half)
+      insertBefore = (targetCi===0) || (e.clientY < r.top + r.height/2);
+    }
+  });
+
+  if (targetCi!==null) {
+    let ins = insertBefore ? targetCi : targetCi+1;
+    let t = ins > rowDragIdx ? ins-1 : ins;
+    t = Math.max(0, Math.min(t, activeCities.length-1));
+    rowOverIdx = t;
+    const willBeHome = t===0 && rowDragIdx!==0;
+    ghost.classList.toggle('will-be-home', willBeHome);
+
+    const dropLine = document.getElementById('dropLine');
+    const tgtLabel = document.querySelector(`#tlGrid .city-label[data-ci="${targetCi}"]`);
+    if (tgtLabel) {
+      const r = tgtLabel.getBoundingClientRect();
+      const outerR = document.getElementById('tlOuter').getBoundingClientRect();
+      dropLine.style.left  = outerR.left + 'px';
+      dropLine.style.width = outerR.width + 'px';
+      dropLine.style.top   = (insertBefore ? r.top : r.bottom) - 1.5 + 'px';
+      dropLine.style.opacity = '1';
+      dropLine.classList.toggle('will-be-home', willBeHome);
+    }
+  } else {
+    rowOverIdx = null;
+    document.getElementById('dropLine').style.opacity = '0';
+    ghost.classList.remove('will-be-home');
+  }
+}
+
+function onRowDragEnd(e) {
+  document.removeEventListener('mousemove', onRowDragMove);
+  document.removeEventListener('mouseup', onRowDragEnd);
+  const ghost = document.getElementById('rowGhost');
+  ghost.style.opacity='0'; ghost.style.top='-9999px';
+  ghost.classList.remove('will-be-home');
+  document.getElementById('dropLine').style.opacity='0';
+  document.querySelectorAll('.row-dragging').forEach(el=>el.classList.remove('row-dragging'));
+
+  if (rowDragIdx!==null && rowOverIdx!==null && rowDragIdx!==rowOverIdx) {
+    const item = activeCities.splice(rowDragIdx,1)[0];
+    const wasHome = rowDragIdx===homeIdx;
+    if (!wasHome && homeIdx>rowDragIdx) homeIdx--;
+    activeCities.splice(rowOverIdx,0,item);
+    if (rowOverIdx===0) { homeIdx=0; }
+    else if (wasHome) { homeIdx=rowOverIdx; }
+    else if (homeIdx>=rowOverIdx) { homeIdx++; }
+    saveCities(); buildGrid();
+  } else {
+    buildGrid();
+  }
+  rowDragIdx=null; rowOverIdx=null;
 }
 
 // ── GLOBAL EVENTS ──
